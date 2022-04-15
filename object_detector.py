@@ -77,6 +77,7 @@ class Detection(NamedTuple):
   """A detected object as the result of an ObjectDetector."""
   bounding_box: Rect
   categories: List[Category]
+  coordinates: tuple
 
 
 def edgetpu_lib_name():
@@ -260,7 +261,10 @@ class ObjectDetector:
             score=scores[i],
             label=self._label_list[class_id],  # 0 is reserved for background
             index=class_id)
-        result = Detection(bounding_box=bounding_box, categories=[category])
+        x_c = (x_min + x_max)/2
+        y_c = (y_min + y_max)/2
+        
+        result = Detection(bounding_box=bounding_box, categories=[category], coordinates=(x_c, y_c))
         results.append(result)
 
     # Sort detection results by score ascending
