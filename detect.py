@@ -16,79 +16,63 @@ import argparse
 import sys
 import time
 
+from multiprocessing import Manager
+from multiprocessing import Process
+import signal
+
 import cv2
 from object_detector import ObjectDetector
 from object_detector import ObjectDetectorOptions
 import utils
 
-import RPi.GPIO as GPIO
-import time
+from servo import Servo
 from PID import PID
-OFFSE_DUTY = 0.5        #define pulse offset of servo
-SERVO_MIN_DUTY = 2.5+OFFSE_DUTY     #define pulse duty cycle for minimum angle of servo
-SERVO_MAX_DUTY = 12.5+OFFSE_DUTY    #define pulse duty cycle for maximum angle of servo
-servoPin = 12
 # set PID values for panning
 #P = 0.09
 #I = 0.08
 #D = 0.002
 
-def map( value, fromLow, fromHigh, toLow, toHigh):  # map a value from one range to another range
-    return (toHigh-toLow)*(value-fromLow) / (fromHigh-fromLow) + toLow
-
-def setup():
-    global p
-    GPIO.setmode(GPIO.BOARD)         # use PHYSICAL GPIO Numbering
-    GPIO.setup(servoPin, GPIO.OUT)   # Set servoPin to OUTPUT mode
-    GPIO.output(servoPin, GPIO.LOW)  # Make servoPin output LOW level
-
-    p = GPIO.PWM(servoPin, 50)     # set Frequece to 50Hz
-    p.start(0)                     # Set initial Duty Cycle to 0
     
-def servoWrite(angle):      # make the servo rotate to specific angle, 0-180 
-    if(angle<0):
-        angle = 0
-    elif(angle > 180):
-        angle = 180
-    p.ChangeDutyCycle(map(angle,0,180,SERVO_MIN_DUTY,SERVO_MAX_DUTY)) # map the angle to duty cycle and output it
-    
-def loop():
-    while True:
-        for dc in range(0, 181, 1):   # make servo rotate from 0 to 180 deg
-            servoWrite(dc)     # Write dc value to servo
-            time.sleep(0.05) # speed
-        time.sleep(2)
-        for dc in range(180, -1, -1): # make servo rotate from 180 to 0 deg
-            servoWrite(dc)
-            time.sleep(0.05)
-        time.sleep(2)
-        
-def turnServo(angle):
-    angle = int(angle)
-    for dc in range(0, angle, 1):   # make servo rotate from 0 to 180 deg
-        servoWrite(dc)     # Write dc value to servo
-        time.sleep(0.03) # speed
-       
-
-def destroy():
-    p.stop()
-    GPIO.cleanup()
+# function to handle keyboard interrupt
+def signal_handler(sig, frame):
+    # print a status message
+    print("[INFO] You pressed `ctrl + c`! Exiting...")
+    # disable the servo
+    servo.destroy()
+    # exit
+    sys.exit()
     
 def pid_process(output, p, i, d, objCoord, centerCoord):
     # signal trap to handle keyboard interrupt
     signal.signal(signal.SIGINT, signal_handler)
     # create a PID and initialize it
-    p = PID(p.value, i.value, d.value)
-    p.initialize()
+    pid = PID(p.value, i.value, d.value)
+    pid.initialize()
     # loop indefinitely
     while True:
         # calculate the error
         error = centerCoord.value - objCoord.value
         # update the value
-        output.value = p.update(error)
-
+        output.value = pid.update(error)
+        #print('from PID:', output.value)
+        
+def set_servos(correct_angle, rn, objX, centerX):
+    servo=Servo()
+    servo.setup()
+    # signal trap to handle keyboard interrupt
+    signal.signal(signal.SIGINT, signal_handler)
+    # loop indefinitely
+    while True:
+        # if the pan angle is within the range, pan
+        if ((90 - correct_angle.value) - servo.prev >= 15) or ((90 - correct_angle.value) - servo.prev <= -15): 
+            print(f'Goal-Angle:{90 - correct_angle.value}, Corretion: {correct_angle.value}, Diff: {centerX.value - objX.value}')
+            servo.changeState(90 - correct_angle.value)
+        #time.sleep(0.2)
+        #print(f'Goal-Angle:{90 + correct_angle.value}, Corretion: {correct_angle.value}, Diff: {centerX.value - objX.value}')
+    servo.destroy()
+    
 def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
-        enable_edgetpu: bool) -> None:
+        enable_edgetpu: bool, objX, centerX) -> None:
   """Continuously run inference on images acquired from the camera.
 
   Args:
@@ -125,14 +109,15 @@ def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
       enable_edgetpu=enable_edgetpu)
   detector = ObjectDetector(model_path=model, options=options)
 
-  pid = PID()
-  pid.initialize()
+  #pid = PID()
+  #pid.initialize()
   _, frame = cap.read()
 
   (H, W) = frame.shape[:2]
-  x_central = W // 2
-  y_central = H // 2
-  central_coords=(x_central, y_central)
+  x_central = 0.5
+  centerX.value = W//2
+  #y_central = H // 2
+  #central_coords=(x_central, y_central)
   # Continuously capture images from the camera and run inference
   while cap.isOpened():
     success, image = cap.read()
@@ -149,11 +134,13 @@ def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
     for d in detections:
         if d.categories[0].label == 'person':
             #print(d.bounding_box)
-            print(d.coordinates)
-            error = central_coords[0] - d.coordinates[0]
-            correct_angle = pid.update(error)
-            print(correct_angle)
-            turnServo(correct_angle)
+            #print(d.coordinates)
+            objX.value = d.coordinates[0]
+            #print(objX.value, centerX.value)
+            #error = central_coords[0] - d.coordinates[0]
+            #correct_angle = pid.update(error)
+            #print(correct_angle)
+            
             #print(g"{d.categories[0].label}")
             #servoWrite(30)
     # Draw keypoints and edges on input image
@@ -178,7 +165,6 @@ def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
 
   cap.release()
   cv2.destroyAllWindows()
-  destroy()
 
 
 def main():
@@ -217,11 +203,37 @@ def main():
       default=True)
   args = parser.parse_args()
   try:
-      setup()
-      run(args.model, int(args.cameraId), args.frameWidth, args.frameHeight,
-          int(args.numThreads), bool(args.enableEdgeTPU))
+      with Manager() as manager:
+        # correct_angle values will be managed by independed PIDs
+
+          correct_angle = manager.Value("i", 90)
+          
+          centerX = manager.Value("i", 320)
+          objX = manager.Value("i", 320)
+          
+          panP = manager.Value("f", 0.1)
+          panI = manager.Value("f", 0.0004)
+          panD = manager.Value("f", 0.000001)
+        
+          processRun = Process(target=run, args=(args.model, int(args.cameraId), args.frameWidth, args.frameHeight,
+              int(args.numThreads), bool(args.enableEdgeTPU), objX, centerX))
+          processPid = Process(target=pid_process, args=(correct_angle, panP, panI, panD, objX, centerX))
+          processServo = Process(target=set_servos, args=(correct_angle, True, objX, centerX))
+          #run(args.model, int(args.cameraId), args.frameWidth, args.frameHeight,
+              #int(args.numThreads), bool(args.enableEdgeTPU))
+          
+          processRun.start()
+          processPid.start()
+          processServo.start()
+          
+          processRun.join()
+          processPid.join()
+          processServo.join()
+          
+          servo.destroy()
+          
   except KeyboardInterrupt:
-      destroy()
+      servo.destroy()
     
 if __name__ == '__main__':
   main()
