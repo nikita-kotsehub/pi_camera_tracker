@@ -1,17 +1,3 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""Main script to run the object detection routine."""
 import argparse
 import sys
 import time
@@ -27,12 +13,7 @@ import utils
 
 from servo import Servo
 from PID import PID
-# set PID values for panning
-#P = 0.09
-#I = 0.08
-#D = 0.002
 
-    
 # function to handle keyboard interrupt
 def signal_handler(sig, frame):
     # print a status message
@@ -54,21 +35,18 @@ def pid_process(output, p, i, d, objCoord, centerCoord):
         error = centerCoord.value - objCoord.value
         # update the value
         output.value = pid.update(error)
-        #print('from PID:', output.value)
         
-def set_servos(correct_angle, rn, objX, centerX):
+def set_servos(correct_angle, objX, centerX):
     servo=Servo()
     servo.setup()
     # signal trap to handle keyboard interrupt
     signal.signal(signal.SIGINT, signal_handler)
     # loop indefinitely
     while True:
-        # if the pan angle is within the range, pan
+        # if the correction angle exceeds 15 in either direction, rotate
         if ((90 - correct_angle.value) - servo.prev >= 15) or ((90 - correct_angle.value) - servo.prev <= -15): 
-            print(f'Goal-Angle:{90 - correct_angle.value}, Corretion: {correct_angle.value}, Diff: {centerX.value - objX.value}')
             servo.changeState(90 - correct_angle.value)
-        #time.sleep(0.2)
-        #print(f'Goal-Angle:{90 + correct_angle.value}, Corretion: {correct_angle.value}, Diff: {centerX.value - objX.value}')
+        
     servo.destroy()
     
 def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
@@ -109,15 +87,11 @@ def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
       enable_edgetpu=enable_edgetpu)
   detector = ObjectDetector(model_path=model, options=options)
 
-  #pid = PID()
-  #pid.initialize()
+  # find the center of the frame, the desired output value
   _, frame = cap.read()
-
   (H, W) = frame.shape[:2]
-  x_central = 0.5
   centerX.value = W//2
-  #y_central = H // 2
-  #central_coords=(x_central, y_central)
+
   # Continuously capture images from the camera and run inference
   while cap.isOpened():
     success, image = cap.read()
@@ -131,32 +105,15 @@ def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
 
     # Run object detection estimation using the model.
     detections = detector.detect(image)
+    
+    # check if any of the detection containes a 'person'
+    # if yes, update the central location of the person
     for d in detections:
         if d.categories[0].label == 'person':
-            #print(d.bounding_box)
-            #print(d.coordinates)
             objX.value = d.coordinates[0]
-            #print(objX.value, centerX.value)
-            #error = central_coords[0] - d.coordinates[0]
-            #correct_angle = pid.update(error)
-            #print(correct_angle)
-            
-            #print(g"{d.categories[0].label}")
-            #servoWrite(30)
+
     # Draw keypoints and edges on input image
     image = utils.visualize(image, detections)
-
-    # Calculate the FPS
-    if counter % fps_avg_frame_count == 0:
-      end_time = time.time()
-      fps = fps_avg_frame_count / (end_time - start_time)
-      start_time = time.time()
-
-    # Show the FPS
-    #fps_text = 'FPS = {:.1f}'.format(fps)
-    #text_location = (left_margin, row_size)
-    #cv2.putText(image, fps_text, text_location, cv2.FONT_HERSHEY_PLAIN,
-                #font_size, text_color, font_thickness)
 
     # Stop the program if the ESC key is pressed.
     if cv2.waitKey(1) == 27:
@@ -203,34 +160,35 @@ def main():
       default=True)
   args = parser.parse_args()
   try:
+      # use Manager to manage multiple threads and share values
       with Manager() as manager:
-        # correct_angle values will be managed by independed PIDs
-
-          correct_angle = manager.Value("i", 90)
+          # the correcting angle
+          correct_angle = manager.Value("i", 0)
           
+          # the X centers of the fram and the object, initial values
           centerX = manager.Value("i", 320)
           objX = manager.Value("i", 320)
           
+          # PID values
           panP = manager.Value("f", 0.1)
           panI = manager.Value("f", 0.0004)
           panD = manager.Value("f", 0.000001)
         
+          # define the processes
           processRun = Process(target=run, args=(args.model, int(args.cameraId), args.frameWidth, args.frameHeight,
               int(args.numThreads), bool(args.enableEdgeTPU), objX, centerX))
           processPid = Process(target=pid_process, args=(correct_angle, panP, panI, panD, objX, centerX))
-          processServo = Process(target=set_servos, args=(correct_angle, True, objX, centerX))
-          #run(args.model, int(args.cameraId), args.frameWidth, args.frameHeight,
-              #int(args.numThreads), bool(args.enableEdgeTPU))
+          processServo = Process(target=set_servos, args=(correct_angle, objX, centerX))
           
+          # start the processes
           processRun.start()
           processPid.start()
           processServo.start()
           
+          # join the processes
           processRun.join()
           processPid.join()
           processServo.join()
-          
-          servo.destroy()
           
   except KeyboardInterrupt:
       servo.destroy()

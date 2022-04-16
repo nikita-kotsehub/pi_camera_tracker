@@ -1,6 +1,5 @@
 import RPi.GPIO as GPIO
 import time
-from PID import PID
 
 class Servo:
     def __init__(self):
@@ -32,7 +31,7 @@ class Servo:
     def changeState(self, new):
         self.prev = int(self.prev)
         new = int(new)
-        #direction = 1 if new > value else -1
+
         if new > self.prev:
             for dc in range(self.prev, new, 1):   # make servo rotate from 0 to 180 deg
                 self.servoWrite(dc)     # Write dc value to servo
@@ -46,15 +45,3 @@ class Servo:
     def destroy(self):
         self.p.stop()
         GPIO.cleanup()
-
-if __name__ == '__main__':     # Program entrance
-    print ('Program is starting...')
-    serv = Servo()
-    serv.setup()
-    try:
-        while True:
-            serv.servoWrite(90)
-        serv.destroy()
-        
-    except KeyboardInterrupt:  # Press ctrl-c to end the program.
-        serv.destroy()
