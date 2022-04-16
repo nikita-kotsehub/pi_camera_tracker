@@ -36,7 +36,7 @@ def pid_process(output, p, i, d, objCoord, centerCoord):
         # update the value
         output.value = pid.update(error)
 
-# modification of he set_servos method from 
+# modification of the set_servos method from 
 # https://pyimagesearch.com/2019/04/01/pan-tilt-face-tracking-with-a-raspberry-pi-and-opencv/        
 def set_servos(correct_angle, objX, centerX):
     servo=Servo()
@@ -51,7 +51,7 @@ def set_servos(correct_angle, objX, centerX):
         
     servo.destroy()
     
-# modification of the run code from 
+# modification of the code from 
 # https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/raspberry_pi
 def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
         enable_edgetpu: bool, objX, centerX) -> None:
