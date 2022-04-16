@@ -1,3 +1,4 @@
+# copied from https://pyimagesearch.com/2019/04/01/pan-tilt-face-tracking-with-a-raspberry-pi-and-opencv/
 # import necessary packages
 import time
 class PID:

@@ -35,7 +35,9 @@ def pid_process(output, p, i, d, objCoord, centerCoord):
         error = centerCoord.value - objCoord.value
         # update the value
         output.value = pid.update(error)
-        
+
+# modification of he set_servos method from 
+# https://pyimagesearch.com/2019/04/01/pan-tilt-face-tracking-with-a-raspberry-pi-and-opencv/        
 def set_servos(correct_angle, objX, centerX):
     servo=Servo()
     servo.setup()
@@ -49,6 +51,8 @@ def set_servos(correct_angle, objX, centerX):
         
     servo.destroy()
     
+# modification of the run code from 
+# https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/raspberry_pi
 def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
         enable_edgetpu: bool, objX, centerX) -> None:
   """Continuously run inference on images acquired from the camera.
@@ -64,20 +68,11 @@ def run(model: str, camera_id: int, width: int, height: int, num_threads: int,
 
   # Variables to calculate FPS
   counter, fps = 0, 0
-  start_time = time.time()
 
   # Start capturing video input from the camera
   cap = cv2.VideoCapture(camera_id)
   cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
   cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-
-  # Visualization parameters
-  row_size = 20  # pixels
-  left_margin = 24  # pixels
-  text_color = (0, 0, 255)  # red
-  font_size = 1
-  font_thickness = 1
-  fps_avg_frame_count = 10
 
   # Initialize the object detection model
   options = ObjectDetectorOptions(

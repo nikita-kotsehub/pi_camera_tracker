@@ -1,3 +1,6 @@
+# Inspiration from Chapter 15: Servo of the Freenove Ultimate Starter Kit tutorial
+# https://github.com/Freenove/Freenove_Ultimate_Starter_Kit
+# I converted the code to a class and added new method changeState
 import RPi.GPIO as GPIO
 import time
 
