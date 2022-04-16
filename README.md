@@ -7,4 +7,4 @@ This project combines and synthesizes mutliple tutorials:
 
 Use source No. 1 to set up object detection and No. 3 to set up the servo. 
 
-For more information on the this project and how it all comes together, follow [this link](https://nikita-kotsehub.notion.site/Assignment-4-Final-Project-Write-Up-90bb9297fe214a0ba558b268a0b1a30d)
+For more information on this project and how it all comes together, follow [this link](https://nikita-kotsehub.notion.site/Assignment-4-Final-Project-Write-Up-90bb9297fe214a0ba558b268a0b1a30d)
